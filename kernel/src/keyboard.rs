@@ -99,22 +99,22 @@ impl MapBuffer {
 // ============================================================
 
 struct KeyboardState {
-    shift_left: bool,
-    shift_right: bool,
+    left_shift: bool,
+    right_shift: bool,
     caps_lock: bool,
 }
 
 impl KeyboardState {
     const fn new() -> Self {
         Self {
-            shift_left: false,
-            shift_right: false,
+            left_shift: false,
+            right_shift: false,
             caps_lock: false,
         }
     }
 
     fn shift(&self) -> bool {
-        self.shift_left || self.shift_right
+        self.left_shift || self.right_shift
     }
 }
 
@@ -177,18 +177,24 @@ fn push_map_scancode(scancode: u8) {
 }
 
 // ============================================================
-// TÜRKÇE Q KLAVYE
+// TÜRKÇE Q
 // ============================================================
 //
-// Senin cihazındaki gözleme göre:
+// Set 1 scancode'ları fiziksel tuşlara göre ele alıyoruz.
 //
-// 0x1A -> Ğ / ğ
-// 0x1B -> Ü / ü
-// 0x27 -> Ş / ş
-// 0x28 -> İ / i
-// 0x26 -> I / ı
-// 0x33 -> Ö / ö
-// 0x34 -> Ç / ç
+// 0x1A = Ğ / ğ
+// 0x1B = Ü / ü
+// 0x27 = Ş / ş
+// 0x28 = İ / i
+// 0x33 = Ö / ö
+// 0x34 = Ç / ç
+//
+// Ayrıca:
+// 0x26 = I / ı
+//
+// uppercase:
+//     false = küçük
+//     true  = büyük
 //
 // ============================================================
 
@@ -287,7 +293,7 @@ fn process_scancode(scancode: u8) {
     push_map_scancode(scancode);
 
     // ========================================================
-    // SHIFT STATE
+    // SHIFT
     // ========================================================
 
     {
@@ -296,22 +302,26 @@ fn process_scancode(scancode: u8) {
         match scancode {
             // Left Shift press
             0x2A => {
-                state.shift_left = true;
+                state.left_shift = true;
+                return;
             }
 
             // Left Shift release
             0xAA => {
-                state.shift_left = false;
+                state.left_shift = false;
+                return;
             }
 
             // Right Shift press
             0x36 => {
-                state.shift_right = true;
+                state.right_shift = true;
+                return;
             }
 
             // Right Shift release
             0xB6 => {
-                state.shift_right = false;
+                state.right_shift = false;
+                return;
             }
 
             _ => {}
@@ -326,6 +336,8 @@ fn process_scancode(scancode: u8) {
         let mut state = KEYBOARD_STATE.lock();
 
         state.caps_lock = !state.caps_lock;
+
+        return;
     }
 
     // ========================================================
@@ -333,19 +345,11 @@ fn process_scancode(scancode: u8) {
     // ========================================================
 
     if scancode & 0x80 != 0 {
-        let mut keyboard_guard = KEYBOARD.lock();
-
-        let Some(keyboard) = keyboard_guard.as_mut() else {
-            return;
-        };
-
-        let _ = keyboard.add_byte(scancode);
-
         return;
     }
 
     // ========================================================
-    // STATE
+    // GET KEYBOARD STATE
     // ========================================================
 
     let (shift, caps_lock);
@@ -357,20 +361,33 @@ fn process_scancode(scancode: u8) {
         caps_lock = state.caps_lock;
     }
 
-    // Shift XOR Caps Lock
+    // ========================================================
+    // LETTER CASE
+    // ========================================================
+    //
+    // Shift XOR CapsLock:
+    //
+    // normal       = lowercase
+    // shift        = uppercase
+    // caps         = uppercase
+    // shift + caps = lowercase
+    //
+    // ========================================================
+
     let uppercase = shift ^ caps_lock;
 
     // ========================================================
-    // TÜRKÇE KARAKTER
+    // TÜRKÇE KARAKTERLER
     // ========================================================
 
     if let Some(character) = turkish_character(scancode, uppercase) {
         INPUT.lock().push(character);
+
         return;
     }
 
     // ========================================================
-    // NORMAL PC KEYBOARD
+    // NORMAL ASCII KEYBOARD
     // ========================================================
 
     let mut keyboard_guard = KEYBOARD.lock();
@@ -390,7 +407,23 @@ fn process_scancode(scancode: u8) {
     match key {
         DecodedKey::Unicode(character) => {
             if character.is_ascii() {
-                INPUT.lock().push(character as u8);
+                let mut output = character as u8;
+
+                // =================================================
+                // ASCII LETTER CASE
+                // =================================================
+
+                if output >= b'a' && output <= b'z' {
+                    if uppercase {
+                        output -= 32;
+                    }
+                } else if output >= b'A' && output <= b'Z' {
+                    if !uppercase {
+                        output += 32;
+                    }
+                }
+
+                INPUT.lock().push(output);
             }
         }
 

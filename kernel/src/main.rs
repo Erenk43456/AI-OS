@@ -105,84 +105,67 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
                         console.print("    ", Color::WHITE);
                     }
 
-                    // ========================================
+                    // ==================================================
                     // TÜRKÇE KÜÇÜK
-                    // ========================================
-
-                    // ğ
+                    // ==================================================
                     0x80 => {
                         console.print_char('ğ', Color::WHITE);
                     }
 
-                    // ü
                     0x81 => {
                         console.print_char('ü', Color::WHITE);
                     }
 
-                    // ş
                     0x82 => {
                         console.print_char('ş', Color::WHITE);
                     }
 
-                    // i
                     0x83 => {
                         console.print_char('i', Color::WHITE);
                     }
 
-                    // ö
                     0x84 => {
                         console.print_char('ö', Color::WHITE);
                     }
 
-                    // ç
                     0x85 => {
                         console.print_char('ç', Color::WHITE);
                     }
 
-                    // ========================================
+                    // ==================================================
                     // TÜRKÇE BÜYÜK
-                    // ========================================
-
-                    // Ğ
+                    // ==================================================
                     0x86 => {
                         console.print_char('Ğ', Color::WHITE);
                     }
 
-                    // Ü
                     0x87 => {
                         console.print_char('Ü', Color::WHITE);
                     }
 
-                    // Ş
                     0x88 => {
                         console.print_char('Ş', Color::WHITE);
                     }
 
-                    // İ
                     0x89 => {
                         console.print_char('İ', Color::WHITE);
                     }
 
-                    // Ö
                     0x8A => {
                         console.print_char('Ö', Color::WHITE);
                     }
 
-                    // Ç
                     0x8B => {
                         console.print_char('Ç', Color::WHITE);
                     }
 
-                    // ========================================
-                    // I / ı
-                    // ========================================
-
-                    // ı
+                    // ==================================================
+                    // NOKTASIZ I
+                    // ==================================================
                     0x8C => {
                         console.print_char('ı', Color::WHITE);
                     }
 
-                    // I
                     0x8D => {
                         console.print_char('I', Color::WHITE);
                     }
