@@ -92,7 +92,7 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
 
         console.println("", Color::WHITE);
         console.println(
-            "┌─ AI-OS ─────────────────────────────────────┐",
+            "┌────────────────AI-OS────────────────────┐",
             Color::BLUE,
         );
         console.println(
@@ -125,6 +125,15 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
         console.print("ai-os@system:~$ ", Color::WHITE);
 
         // ====================================================
+        // SHELL INPUT PROTECTION
+        // ====================================================
+
+        // Kullanıcının yazabileceği alanın başlangıç noktası.
+        // Prompt'un kendisi hiçbir zaman silinemez.
+        let mut shell_input_x = console.cursor_x();
+        let mut shell_input_y = console.cursor_y();
+
+        // ====================================================
         // MAIN LOOP
         // ====================================================
 
@@ -140,13 +149,23 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
                         console.println("", Color::WHITE);
 
                         console.print("ai-os@system:~$ ", Color::WHITE);
+
+                        // Yeni satırdaki prompt'un başlangıcını kaydet.
+                        shell_input_x = console.cursor_x();
+                        shell_input_y = console.cursor_y();
                     }
 
                     // ========================================
                     // BACKSPACE
                     // ========================================
                     0x08 => {
-                        console.backspace();
+                        let cursor_x = console.cursor_x();
+                        let cursor_y = console.cursor_y();
+
+                        // Shell prompt'unun üzerine geri gidilemez.
+                        if cursor_y == shell_input_y && cursor_x > shell_input_x {
+                            console.backspace();
+                        }
                     }
 
                     // ========================================
