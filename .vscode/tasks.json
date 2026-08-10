@@ -1,0 +1,51 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "AI-OS Build",
+            "type": "process",
+            "command": "C:\\Users\\Admin\\.cargo\\bin\\cargo.exe",
+            "args": [
+                "build"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "AI-OS: Run QEMU",
+            "type": "process",
+            "dependsOn": [
+                "AI-OS Build"
+            ],
+            "dependsOrder": "sequence",
+            "command": "C:\\Program Files\\qemu\\qemu-system-x86_64.exe",
+            "args": [
+                "-drive",
+                "if=pflash,format=raw,readonly=on,file=C:\\Program Files\\qemu\\share\\edk2-x86_64-code.fd",
+                "-drive",
+                "format=raw,file=${workspaceFolder}\\target\\debug\\build\\ai_os-8262a7fffaba1ebb\\out\\ai-os-uefi.img"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "focus": true
+            }
+        }
+    ]
+}
