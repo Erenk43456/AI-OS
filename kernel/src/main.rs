@@ -42,20 +42,16 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
 
         loop {
             keyboard::poll();
-            
-            while let Some(debug_char) = keyboard::read_debug() {
-                console.print(&[debug_char], Color::RED);
+
+            while let Some(byte) = keyboard::read_map_output() {
+                console.print(&[byte], Color::RED);
             }
-            
+
             while let Some(character) = keyboard::read() {
                 match character {
                     b'\r' | b'\n' => {
                         console.println(b"", Color::WHITE);
                         console.print(b"ai-os> ", Color::WHITE);
-                    }
-
-                    8 => {
-                        // Backspace will be implemented in Console.
                     }
 
                     _ => {

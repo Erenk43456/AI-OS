@@ -1,17 +1,11 @@
 use crate::drivers::keyboard::ps2;
 
-use pc_keyboard::{
-    layouts,
-    DecodedKey,
-    HandleControl,
-    Keyboard,
-    ScancodeSet1,
-};
+use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1, layouts};
 
 use spin::Mutex;
 
 const INPUT_BUFFER_SIZE: usize = 256;
-const DEBUG_BUFFER_SIZE: usize = 64;
+const MAP_BUFFER_SIZE: usize = 64;
 
 struct InputBuffer {
     data: [u8; INPUT_BUFFER_SIZE],
@@ -45,38 +39,34 @@ impl InputBuffer {
         }
 
         let byte = self.data[self.read];
+
         self.read = (self.read + 1) % INPUT_BUFFER_SIZE;
 
         Some(byte)
     }
 }
 
-struct DebugBuffer {
-    data: [u8; DEBUG_BUFFER_SIZE],
+struct MapBuffer {
+    data: [u8; MAP_BUFFER_SIZE],
     len: usize,
 }
 
-impl DebugBuffer {
+impl MapBuffer {
     const fn new() -> Self {
         Self {
-            data: [0; DEBUG_BUFFER_SIZE],
+            data: [0; MAP_BUFFER_SIZE],
             len: 0,
         }
     }
 
-    fn set(&mut self, data: &[u8]) {
-        self.len = 0;
-
-        let mut i = 0;
-
-        while i < data.len() && i < DEBUG_BUFFER_SIZE {
-            self.data[i] = data[i];
+    fn push(&mut self, byte: u8) {
+        if self.len < MAP_BUFFER_SIZE {
+            self.data[self.len] = byte;
             self.len += 1;
-            i += 1;
         }
     }
 
-    fn read(&mut self) -> Option<u8> {
+    fn pop(&mut self) -> Option<u8> {
         if self.len == 0 {
             return None;
         }
@@ -96,14 +86,11 @@ impl DebugBuffer {
     }
 }
 
-static KEYBOARD: Mutex<Option<Keyboard<layouts::Us104Key, ScancodeSet1>>> =
-    Mutex::new(None);
+static KEYBOARD: Mutex<Option<Keyboard<layouts::Us104Key, ScancodeSet1>>> = Mutex::new(None);
 
-static INPUT: Mutex<InputBuffer> =
-    Mutex::new(InputBuffer::new());
+static INPUT: Mutex<InputBuffer> = Mutex::new(InputBuffer::new());
 
-static DEBUG: Mutex<DebugBuffer> =
-    Mutex::new(DebugBuffer::new());
+static MAP_OUTPUT: Mutex<MapBuffer> = Mutex::new(MapBuffer::new());
 
 pub fn init() {
     ps2::init();
@@ -117,35 +104,63 @@ pub fn init() {
     *KEYBOARD.lock() = Some(keyboard);
 }
 
+fn hex_digit(value: u8) -> u8 {
+    match value {
+        0..=9 => b'0' + value,
+        _ => b'A' + (value - 10),
+    }
+}
+
+fn push_hex(value: u8) {
+    let mut output = MAP_OUTPUT.lock();
+
+    output.push(b'0');
+    output.push(b'x');
+    output.push(hex_digit(value >> 4));
+    output.push(hex_digit(value & 0x0F));
+}
+
 fn process_scancode(scancode: u8) {
-    // ============================================================
-    // SCANCODE DEBUG
-    // ============================================================
+    /*
+     * Set 1 keyboard release codes normally have bit 7 set.
+     *
+     * Example:
+     *
+     * A press    = 0x1E
+     * A release  = 0x9E
+     *
+     * We only record key presses.
+     */
+    if scancode & 0x80 != 0 {
+        return;
+    }
 
-    let mut debug = [0u8; 16];
+    /*
+     * Mapping test output:
+     *
+     * SC:0x1E\n
+     *
+     * The main kernel will display this.
+     */
+    {
+        let mut output = MAP_OUTPUT.lock();
 
-    debug[0] = b'S';
-    debug[1] = b'C';
-    debug[2] = b':';
-    debug[3] = b' ';
+        output.push(b'S');
+        output.push(b'C');
+        output.push(b':');
 
-    debug[4] = b'0';
-    debug[5] = b'x';
+        output.push(b'0');
+        output.push(b'x');
 
-    let hex = b"0123456789ABCDEF";
+        output.push(hex_digit(scancode >> 4));
+        output.push(hex_digit(scancode & 0x0F));
 
-    debug[6] = hex[(scancode >> 4) as usize];
-    debug[7] = hex[(scancode & 0x0F) as usize];
+        output.push(b'\n');
+    }
 
-    debug[8] = b' ';
-    debug[9] = b' ';
-
-    DEBUG.lock().set(&debug[..10]);
-
-    // ============================================================
-    // NORMAL KEYBOARD DECODING
-    // ============================================================
-
+    /*
+     * Normal keyboard decoder.
+     */
     let mut keyboard_guard = KEYBOARD.lock();
 
     let Some(keyboard) = keyboard_guard.as_mut() else {
@@ -181,8 +196,8 @@ pub fn read() -> Option<u8> {
     INPUT.lock().pop()
 }
 
-pub fn read_debug() -> Option<u8> {
-    DEBUG.lock().read()
+pub fn read_map_output() -> Option<u8> {
+    MAP_OUTPUT.lock().pop()
 }
 
 pub fn handle_interrupt() {
