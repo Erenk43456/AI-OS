@@ -45,33 +45,84 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
 
         let mut console = Console::new(buffer, info);
 
+        console.clear();
+
         // ====================================================
-        // BOOT
+        // AI-OS BOOT SPLASH
         // ====================================================
 
-        console.println("AI-OS KERNEL", Color::WHITE);
+        console.println("", Color::WHITE);
+        console.println("", Color::WHITE);
+        console.println("                 AI-OS", Color::BLUE);
+        console.println("", Color::WHITE);
+        console.println("        ARTIFICIAL INTELLIGENCE", Color::WHITE);
+        console.println("          OPERATING SYSTEM", Color::WHITE);
+        console.println("", Color::WHITE);
+        console.println("", Color::WHITE);
+
+        console.println("              INITIALIZING", Color::BLUE);
+        console.println("", Color::WHITE);
+
+        console.println("                    .", Color::WHITE);
+        console.println("                   . .", Color::WHITE);
+        console.println("                  . . .", Color::WHITE);
+
+        console.println("", Color::WHITE);
+        console.println("", Color::WHITE);
+
+        // ====================================================
+        // SYSTEM INITIALIZATION
+        // ====================================================
+
+        console.println("AI-OS SYSTEM", Color::BLUE);
+        console.println("----------------------------------------", Color::WHITE);
+
+        console.println("Kernel              [ OK ]", Color::GREEN);
+        console.println("Framebuffer         [ OK ]", Color::GREEN);
+        console.println("Memory              [ OK ]", Color::GREEN);
+        console.println("PS/2 Controller     [ OK ]", Color::GREEN);
+        console.println("Keyboard            [ OK ]", Color::GREEN);
+        console.println("Turkish Q Layout    [ OK ]", Color::GREEN);
+
+        console.println("----------------------------------------", Color::WHITE);
+        console.println("", Color::WHITE);
+
+        console.println("AI-OS SYSTEM READY", Color::BLUE);
+        console.println("", Color::WHITE);
+
+        console.println("", Color::WHITE);
+        console.println(
+            "┌─ AI-OS ─────────────────────────────────────┐",
+            Color::BLUE,
+        );
+        console.println(
+            "│                                            │",
+            Color::BLUE,
+        );
+        console.println(
+            "│  Kernel      : AI-OS Kernel                │",
+            Color::WHITE,
+        );
+        console.println(
+            "│  Architecture: x86_64                      │",
+            Color::WHITE,
+        );
+        console.println(
+            "│  Input       : Turkish Q                   │",
+            Color::WHITE,
+        );
+        console.println(
+            "│                                            │",
+            Color::BLUE,
+        );
+        console.println(
+            "└────────────────────────────────────────────┘",
+            Color::BLUE,
+        );
 
         console.println("", Color::WHITE);
 
-        console.println("[OK] BOOTLOADER", Color::GREEN);
-
-        console.println("[OK] FRAMEBUFFER", Color::GREEN);
-
-        console.println("[OK] KERNEL", Color::GREEN);
-
-        console.println("[OK] PS2", Color::GREEN);
-
-        console.println("[OK] KEYBOARD", Color::GREEN);
-
-        console.println("[OK] TURKISH Q", Color::GREEN);
-
-        console.println("", Color::WHITE);
-
-        console.println("AI-OS READY", Color::WHITE);
-
-        console.println("", Color::WHITE);
-
-        console.print("ai-os> ", Color::WHITE);
+        console.print("ai-os@system:~$ ", Color::WHITE);
 
         // ====================================================
         // MAIN LOOP
@@ -88,7 +139,7 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
                     b'\n' | b'\r' => {
                         console.println("", Color::WHITE);
 
-                        console.print("ai-os> ", Color::WHITE);
+                        console.print("ai-os@system:~$ ", Color::WHITE);
                     }
 
                     // ========================================
