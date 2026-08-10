@@ -1,7 +1,5 @@
 use bootloader_api::info::{FrameBufferInfo, PixelFormat};
 
-const BLACK: u8 = 0x00;
-
 #[derive(Clone, Copy)]
 pub struct Color {
     pub r: u8,
@@ -19,182 +17,349 @@ impl Color {
     pub const GREEN: Color = Color { r: 0, g: 255, b: 0 };
 
     pub const BLUE: Color = Color {
-        r: 80,
-        g: 160,
+        r: 0,
+        g: 100,
         b: 255,
     };
 
-    pub const RED: Color = Color {
-        r: 255,
-        g: 60,
-        b: 60,
-    };
+    pub const RED: Color = Color { r: 255, g: 0, b: 0 };
 }
 
 pub struct Console<'a> {
     buffer: &'a mut [u8],
     info: FrameBufferInfo,
-    cursor_x: usize,
-    cursor_y: usize,
+    x: usize,
+    y: usize,
+    fg: Color,
+    bg: Color,
 }
 
 impl<'a> Console<'a> {
     pub fn new(buffer: &'a mut [u8], info: FrameBufferInfo) -> Self {
-        let mut console = Self {
+        Self {
             buffer,
             info,
-            cursor_x: 10,
-            cursor_y: 10,
-        };
+            x: 0,
+            y: 0,
+            fg: Color::WHITE,
+            bg: Color { r: 0, g: 0, b: 0 },
+        }
+    }
 
-        console.clear();
-        console
+    pub fn set_foreground(&mut self, color: Color) {
+        self.fg = color;
+    }
+
+    pub fn set_background(&mut self, color: Color) {
+        self.bg = color;
     }
 
     pub fn clear(&mut self) {
-        for byte in self.buffer.iter_mut() {
-            *byte = BLACK;
-        }
+        let width = self.info.width;
+        let height = self.info.height;
 
-        self.cursor_x = 10;
-        self.cursor_y = 10;
-    }
-
-    fn draw_pixel(&mut self, x: usize, y: usize, color: Color) {
-        if x >= self.info.width || y >= self.info.height {
-            return;
-        }
-
-        let offset = (y * self.info.stride + x) * self.info.bytes_per_pixel;
-
-        match self.info.pixel_format {
-            PixelFormat::Rgb => {
-                self.buffer[offset] = color.r;
-                self.buffer[offset + 1] = color.g;
-                self.buffer[offset + 2] = color.b;
-            }
-
-            PixelFormat::Bgr => {
-                self.buffer[offset] = color.b;
-                self.buffer[offset + 1] = color.g;
-                self.buffer[offset + 2] = color.r;
-            }
-
-            PixelFormat::U8 => {
-                self.buffer[offset] = color.r;
-            }
-
-            _ => {}
-        }
-    }
-
-    fn glyph(c: u8) -> [u8; 8] {
-        match c {
-            b'A' => [
-                0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001, 0,
-            ],
-
-            b'I' => [
-                0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b11111, 0,
-            ],
-
-            b'O' => [
-                0b01110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110, 0,
-            ],
-
-            b'S' => [
-                0b01111, 0b10000, 0b10000, 0b01110, 0b00001, 0b00001, 0b11110, 0,
-            ],
-
-            b'K' => [
-                0b10001, 0b10010, 0b10100, 0b11000, 0b10100, 0b10010, 0b10001, 0,
-            ],
-
-            b'E' => [
-                0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111, 0,
-            ],
-
-            b'R' => [
-                0b11110, 0b10001, 0b10001, 0b11110, 0b10100, 0b10010, 0b10001, 0,
-            ],
-
-            b'N' => [
-                0b10001, 0b11001, 0b10101, 0b10011, 0b10001, 0b10001, 0b10001, 0,
-            ],
-
-            b'L' => [
-                0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11111, 0,
-            ],
-
-            b'T' => [
-                0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0,
-            ],
-
-            b'B' => [
-                0b11110, 0b10001, 0b10001, 0b11110, 0b10001, 0b10001, 0b11110, 0,
-            ],
-
-            b'D' => [
-                0b11110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11110, 0,
-            ],
-
-            b'F' => [
-                0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000, 0,
-            ],
-
-            b'M' => [
-                0b10001, 0b11011, 0b10101, 0b10101, 0b10001, 0b10001, 0b10001, 0,
-            ],
-
-            b'[' => [
-                0b11111, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11111, 0,
-            ],
-
-            b']' => [
-                0b11111, 0b00001, 0b00001, 0b00001, 0b00001, 0b00001, 0b11111, 0,
-            ],
-
-            b' ' => [0; 8],
-
-            _ => [0; 8],
-        }
-    }
-
-    fn draw_char(&mut self, x: usize, y: usize, c: u8, color: Color) {
-        let glyph = Self::glyph(c);
-
-        for (row, bits) in glyph.iter().enumerate() {
-            for col in 0..5 {
-                if bits & (1 << (4 - col)) != 0 {
-                    self.draw_pixel(x + col, y + row, color);
-                }
+        for y in 0..height {
+            for x in 0..width {
+                self.put_pixel(x, y, self.bg);
             }
         }
+
+        self.x = 0;
+        self.y = 0;
     }
 
     pub fn print(&mut self, text: &[u8], color: Color) {
         for &byte in text {
-            if byte == b'\n' {
-                self.cursor_x = 10;
-                self.cursor_y += 10;
-                continue;
-            }
+            match byte {
+                b'\n' => self.new_line(),
 
-            self.draw_char(self.cursor_x, self.cursor_y, byte, color);
+                b'\r' => {
+                    self.x = 0;
+                }
 
-            self.cursor_x += 6;
+                b'\t' => {
+                    self.x += 32;
 
-            if self.cursor_x + 6 >= self.info.width {
-                self.cursor_x = 10;
-                self.cursor_y += 10;
+                    if self.x + 8 >= self.info.width {
+                        self.new_line();
+                    }
+                }
+
+                _ => {
+                    self.draw_char(byte, color);
+                }
             }
         }
     }
 
     pub fn println(&mut self, text: &[u8], color: Color) {
         self.print(text, color);
+        self.new_line();
+    }
 
-        self.cursor_x = 10;
-        self.cursor_y += 10;
+    fn new_line(&mut self) {
+        self.x = 0;
+        self.y += 10;
+
+        if self.y + 8 >= self.info.height {
+            self.scroll();
+        }
+    }
+
+    fn draw_char(&mut self, c: u8, color: Color) {
+        if self.x + 8 >= self.info.width {
+            self.new_line();
+        }
+
+        let glyph = glyph(c);
+
+        for row in 0..8 {
+            let bits = glyph[row];
+
+            for col in 0..8 {
+                if bits & (1 << (7 - col)) != 0 {
+                    self.put_pixel(self.x + col, self.y + row, color);
+                }
+            }
+        }
+
+        self.x += 8;
+    }
+
+    fn put_pixel(&mut self, x: usize, y: usize, color: Color) {
+        if x >= self.info.width || y >= self.info.height {
+            return;
+        }
+
+        let pixel_offset =
+            y * self.info.bytes_per_pixel * self.info.width + x * self.info.bytes_per_pixel;
+
+        match self.info.pixel_format {
+            PixelFormat::Rgb => {
+                self.buffer[pixel_offset] = color.r;
+                self.buffer[pixel_offset + 1] = color.g;
+                self.buffer[pixel_offset + 2] = color.b;
+            }
+
+            PixelFormat::Bgr => {
+                self.buffer[pixel_offset] = color.b;
+                self.buffer[pixel_offset + 1] = color.g;
+                self.buffer[pixel_offset + 2] = color.r;
+            }
+
+            _ => {}
+        }
+    }
+
+    fn scroll(&mut self) {
+        let width = self.info.width;
+        let height = self.info.height;
+        let bytes_per_pixel = self.info.bytes_per_pixel;
+
+        let line_height = 10;
+
+        for y in line_height..height {
+            let src = y * width * bytes_per_pixel;
+            let dst = (y - line_height) * width * bytes_per_pixel;
+
+            let length = width * bytes_per_pixel;
+
+            self.buffer.copy_within(src..src + length, dst);
+        }
+
+        for y in height - line_height..height {
+            for x in 0..width {
+                self.put_pixel(x, y, self.bg);
+            }
+        }
+
+        self.y = height - line_height;
+        self.x = 0;
+    }
+}
+
+fn glyph(c: u8) -> [u8; 8] {
+    match c {
+        b' ' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+
+        b'0' => [0x3C, 0x66, 0x6E, 0x76, 0x66, 0x66, 0x3C, 0x00],
+
+        b'1' => [0x18, 0x38, 0x18, 0x18, 0x18, 0x18, 0x7E, 0x00],
+
+        b'2' => [0x3C, 0x66, 0x06, 0x0C, 0x18, 0x30, 0x66, 0x7E],
+
+        b'3' => [0x3C, 0x66, 0x06, 0x1C, 0x06, 0x66, 0x3C, 0x00],
+
+        b'4' => [0x0C, 0x1C, 0x3C, 0x6C, 0x7E, 0x0C, 0x0C, 0x00],
+
+        b'5' => [0x7E, 0x60, 0x7C, 0x06, 0x06, 0x66, 0x3C, 0x00],
+
+        b'6' => [0x1C, 0x30, 0x60, 0x7C, 0x66, 0x66, 0x3C, 0x00],
+
+        b'7' => [0x7E, 0x66, 0x06, 0x0C, 0x18, 0x18, 0x18, 0x00],
+
+        b'8' => [0x3C, 0x66, 0x66, 0x3C, 0x66, 0x66, 0x3C, 0x00],
+
+        b'9' => [0x3C, 0x66, 0x66, 0x3E, 0x06, 0x0C, 0x38, 0x00],
+
+        b'A' => [0x18, 0x3C, 0x66, 0x66, 0x7E, 0x66, 0x66, 0x00],
+
+        b'B' => [0x7C, 0x66, 0x66, 0x7C, 0x66, 0x66, 0x7C, 0x00],
+
+        b'C' => [0x3C, 0x66, 0x60, 0x60, 0x60, 0x66, 0x3C, 0x00],
+
+        b'D' => [0x78, 0x6C, 0x66, 0x66, 0x66, 0x6C, 0x78, 0x00],
+
+        b'E' => [0x7E, 0x60, 0x60, 0x7C, 0x60, 0x60, 0x7E, 0x00],
+
+        b'F' => [0x7E, 0x60, 0x60, 0x7C, 0x60, 0x60, 0x60, 0x00],
+
+        b'G' => [0x3C, 0x66, 0x60, 0x6E, 0x66, 0x66, 0x3C, 0x00],
+
+        b'H' => [0x66, 0x66, 0x66, 0x7E, 0x66, 0x66, 0x66, 0x00],
+
+        b'I' => [0x7E, 0x18, 0x18, 0x18, 0x18, 0x18, 0x7E, 0x00],
+
+        b'J' => [0x1E, 0x0C, 0x0C, 0x0C, 0x0C, 0x6C, 0x38, 0x00],
+
+        b'K' => [0x66, 0x6C, 0x78, 0x70, 0x78, 0x6C, 0x66, 0x00],
+
+        b'L' => [0x60, 0x60, 0x60, 0x60, 0x60, 0x60, 0x7E, 0x00],
+
+        b'M' => [0x63, 0x77, 0x7F, 0x6B, 0x63, 0x63, 0x63, 0x00],
+
+        b'N' => [0x66, 0x76, 0x7E, 0x7E, 0x6E, 0x66, 0x66, 0x00],
+
+        b'O' => [0x3C, 0x66, 0x66, 0x66, 0x66, 0x66, 0x3C, 0x00],
+
+        b'P' => [0x7C, 0x66, 0x66, 0x7C, 0x60, 0x60, 0x60, 0x00],
+
+        b'Q' => [0x3C, 0x66, 0x66, 0x66, 0x6E, 0x3C, 0x0E, 0x00],
+
+        b'R' => [0x7C, 0x66, 0x66, 0x7C, 0x78, 0x6C, 0x66, 0x00],
+
+        b'S' => [0x3C, 0x66, 0x60, 0x3C, 0x06, 0x66, 0x3C, 0x00],
+
+        b'T' => [0x7E, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x00],
+
+        b'U' => [0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x3C, 0x00],
+
+        b'V' => [0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x3C, 0x18],
+
+        b'W' => [0x63, 0x63, 0x63, 0x6B, 0x7F, 0x77, 0x63, 0x00],
+
+        b'X' => [0x66, 0x66, 0x3C, 0x18, 0x3C, 0x66, 0x66, 0x00],
+
+        b'Y' => [0x66, 0x66, 0x3C, 0x18, 0x18, 0x18, 0x18, 0x00],
+
+        b'Z' => [0x7E, 0x06, 0x0C, 0x18, 0x30, 0x60, 0x7E, 0x00],
+
+        b'a' => [0x00, 0x00, 0x3C, 0x06, 0x3E, 0x66, 0x3E, 0x00],
+
+        b'b' => [0x60, 0x60, 0x7C, 0x66, 0x66, 0x66, 0x7C, 0x00],
+
+        b'c' => [0x00, 0x00, 0x3C, 0x66, 0x60, 0x66, 0x3C, 0x00],
+
+        b'd' => [0x06, 0x06, 0x3E, 0x66, 0x66, 0x66, 0x3E, 0x00],
+
+        b'e' => [0x00, 0x00, 0x3C, 0x66, 0x7E, 0x60, 0x3C, 0x00],
+
+        b'f' => [0x1C, 0x36, 0x30, 0x7C, 0x30, 0x30, 0x30, 0x00],
+
+        b'g' => [0x00, 0x00, 0x3E, 0x66, 0x66, 0x3E, 0x06, 0x7C],
+
+        b'h' => [0x60, 0x60, 0x7C, 0x66, 0x66, 0x66, 0x66, 0x00],
+
+        b'i' => [0x18, 0x00, 0x38, 0x18, 0x18, 0x18, 0x3C, 0x00],
+
+        b'j' => [0x0C, 0x00, 0x1C, 0x0C, 0x0C, 0x0C, 0x6C, 0x38],
+
+        b'k' => [0x60, 0x60, 0x66, 0x6C, 0x78, 0x6C, 0x66, 0x00],
+
+        b'l' => [0x38, 0x18, 0x18, 0x18, 0x18, 0x18, 0x3C, 0x00],
+
+        b'm' => [0x00, 0x00, 0x66, 0x7F, 0x7F, 0x6B, 0x63, 0x00],
+
+        b'n' => [0x00, 0x00, 0x7C, 0x66, 0x66, 0x66, 0x66, 0x00],
+
+        b'o' => [0x00, 0x00, 0x3C, 0x66, 0x66, 0x66, 0x3C, 0x00],
+
+        b'p' => [0x00, 0x00, 0x7C, 0x66, 0x66, 0x7C, 0x60, 0x60],
+
+        b'q' => [0x00, 0x00, 0x3E, 0x66, 0x66, 0x3E, 0x06, 0x06],
+
+        b'r' => [0x00, 0x00, 0x6C, 0x76, 0x60, 0x60, 0x60, 0x00],
+
+        b's' => [0x00, 0x00, 0x3E, 0x60, 0x3C, 0x06, 0x7C, 0x00],
+
+        b't' => [0x30, 0x30, 0x7C, 0x30, 0x30, 0x36, 0x1C, 0x00],
+
+        b'u' => [0x00, 0x00, 0x66, 0x66, 0x66, 0x66, 0x3E, 0x00],
+
+        b'v' => [0x00, 0x00, 0x66, 0x66, 0x66, 0x66, 0x3C, 0x18],
+
+        b'w' => [0x00, 0x00, 0x63, 0x6B, 0x7F, 0x7F, 0x36, 0x00],
+
+        b'x' => [0x00, 0x00, 0x66, 0x3C, 0x18, 0x3C, 0x66, 0x00],
+
+        b'y' => [0x00, 0x00, 0x66, 0x66, 0x66, 0x3E, 0x06, 0x3C],
+
+        b'z' => [0x00, 0x00, 0x7E, 0x0C, 0x18, 0x30, 0x7E, 0x00],
+
+        b'!' => [0x18, 0x18, 0x18, 0x18, 0x18, 0x00, 0x18, 0x00],
+
+        b'?' => [0x3C, 0x66, 0x06, 0x0C, 0x18, 0x00, 0x18, 0x00],
+
+        b'.' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x00],
+
+        b',' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x30],
+
+        b':' => [0x00, 0x18, 0x18, 0x00, 0x00, 0x18, 0x18, 0x00],
+
+        b';' => [0x00, 0x18, 0x18, 0x00, 0x00, 0x18, 0x18, 0x30],
+
+        b'-' => [0x00, 0x00, 0x00, 0x7E, 0x00, 0x00, 0x00, 0x00],
+
+        b'_' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7E, 0x00],
+
+        b'+' => [0x00, 0x18, 0x18, 0x7E, 0x18, 0x18, 0x00, 0x00],
+
+        b'=' => [0x00, 0x7E, 0x00, 0x7E, 0x00, 0x00, 0x00, 0x00],
+
+        b'*' => [0x00, 0x66, 0x3C, 0xFF, 0x3C, 0x66, 0x00, 0x00],
+
+        b'/' => [0x06, 0x0C, 0x18, 0x30, 0x60, 0x40, 0x00, 0x00],
+
+        b'\\' => [0x60, 0x30, 0x18, 0x0C, 0x06, 0x02, 0x00, 0x00],
+
+        b'(' => [0x0C, 0x18, 0x30, 0x30, 0x30, 0x18, 0x0C, 0x00],
+
+        b')' => [0x30, 0x18, 0x0C, 0x0C, 0x0C, 0x18, 0x30, 0x00],
+
+        b'[' => [0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00],
+
+        b']' => [0x3C, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x3C, 0x00],
+
+        b'<' => [0x0C, 0x18, 0x30, 0x60, 0x30, 0x18, 0x0C, 0x00],
+
+        b'>' => [0x30, 0x18, 0x0C, 0x06, 0x0C, 0x18, 0x30, 0x00],
+
+        b'|' => [0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x00],
+
+        b'"' => [0x66, 0x66, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00],
+
+        b'\'' => [0x18, 0x18, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00],
+
+        b'@' => [0x3C, 0x66, 0x6F, 0x69, 0x6F, 0x60, 0x3C, 0x00],
+
+        b'#' => [0x24, 0x24, 0x7E, 0x24, 0x7E, 0x24, 0x24, 0x00],
+
+        b'$' => [0x18, 0x3E, 0x60, 0x3C, 0x06, 0x7C, 0x18, 0x00],
+
+        b'%' => [0x62, 0x66, 0x0C, 0x18, 0x30, 0x66, 0x46, 0x00],
+
+        b'&' => [0x38, 0x6C, 0x38, 0x76, 0xDC, 0xCC, 0x76, 0x00],
+
+        _ => [0x7E, 0x42, 0x5A, 0x5A, 0x5A, 0x42, 0x7E, 0x00],
     }
 }

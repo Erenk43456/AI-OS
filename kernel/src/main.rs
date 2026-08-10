@@ -15,23 +15,9 @@ use core::panic::PanicInfo;
 entry_point!(kernel_main);
 
 fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
-    // Interrupts kapalıyken donanımı hazırla.
     arch::x86_64::interrupts::disable();
 
-    // Keyboard driver.
     keyboard::init();
-
-    // Programmable Interrupt Controller.
-    arch::x86_64::interrupts::init();
-
-    // Interrupt Descriptor Table.
-    arch::x86_64::idt::init();
-
-    // Sadece keyboard IRQ1'i aç.
-    arch::x86_64::interrupts::unmask_keyboard();
-
-    // CPU interruptlarını aktif et.
-    arch::x86_64::interrupts::enable();
 
     if let Some(framebuffer) = boot_info.framebuffer.as_mut() {
         let info = framebuffer.info();
@@ -45,32 +31,40 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
         console.println(b"[OK] BOOTLOADER", Color::GREEN);
         console.println(b"[OK] FRAMEBUFFER", Color::GREEN);
         console.println(b"[OK] KERNEL", Color::GREEN);
-        console.println(b"[OK] PIC", Color::GREEN);
-        console.println(b"[OK] IDT", Color::GREEN);
-        console.println(b"[OK] PS/2", Color::GREEN);
+        console.println(b"[OK] PS2", Color::GREEN);
         console.println(b"[OK] KEYBOARD", Color::GREEN);
-        console.println(b"[OK] INPUT", Color::GREEN);
 
         console.println(b"", Color::WHITE);
-
         console.println(b"AI-OS READY", Color::WHITE);
         console.println(b"", Color::WHITE);
 
         console.print(b"ai-os> ", Color::WHITE);
 
         loop {
-            let status = keyboard::status();
-
-            let hex = b"0123456789ABCDEF";
-
-            console.print(b" [", Color::WHITE);
-            console.print(&[hex[(status >> 4) as usize]], Color::WHITE);
-            console.print(&[hex[(status & 0x0F) as usize]], Color::WHITE);
-            console.print(b"]", Color::WHITE);
-
-            for _ in 0..5_000_000 {
-                core::hint::spin_loop();
+            keyboard::poll();
+            
+            while let Some(debug_char) = keyboard::read_debug() {
+                console.print(&[debug_char], Color::RED);
             }
+            
+            while let Some(character) = keyboard::read() {
+                match character {
+                    b'\r' | b'\n' => {
+                        console.println(b"", Color::WHITE);
+                        console.print(b"ai-os> ", Color::WHITE);
+                    }
+
+                    8 => {
+                        // Backspace will be implemented in Console.
+                    }
+
+                    _ => {
+                        console.print(&[character], Color::WHITE);
+                    }
+                }
+            }
+
+            core::hint::spin_loop();
         }
     }
 
