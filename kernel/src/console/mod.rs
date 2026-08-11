@@ -42,6 +42,9 @@ pub struct Console<'a> {
 
     fg: Color,
     bg: Color,
+
+    cursor_visible: bool,
+    cursor_saved: [Color; 16],
 }
 
 impl<'a> Console<'a> {
@@ -58,8 +61,10 @@ impl<'a> Console<'a> {
             y: 0,
 
             fg: Color::WHITE,
-
             bg: Color { r: 0, g: 0, b: 0 },
+
+            cursor_visible: false,
+            cursor_saved: [Color { r: 0, g: 0, b: 0 }; 16],
         }
     }
 
@@ -95,6 +100,8 @@ impl<'a> Console<'a> {
 
         self.x = 0;
         self.y = 0;
+
+        self.cursor_visible = false;
     }
 
     // ========================================================
@@ -113,7 +120,74 @@ impl<'a> Console<'a> {
         self.new_line();
     }
 
+    // ========================================================
+    // CURSOR
+    // ========================================================
+
+    pub fn draw_cursor(&mut self) {
+        if self.cursor_visible {
+            return;
+        }
+
+        let x = self.x;
+        let y = self.y;
+
+        // Cursor'un altındaki pikselleri kaydet.
+        let mut index = 0;
+
+        for row in 6..8 {
+            for col in 0..8 {
+                self.cursor_saved[index] =
+                    self.get_pixel(x + col, y + row);
+
+                index += 1;
+            }
+        }
+
+        // Cursor çiz.
+        for row in 6..8 {
+            for col in 0..8 {
+                self.put_pixel(x + col, y + row, self.fg);
+            }
+        }
+
+        self.cursor_visible = true;
+    }
+
+    pub fn clear_cursor(&mut self) {
+        if !self.cursor_visible {
+            return;
+        }
+
+        let x = self.x;
+        let y = self.y;
+
+        // Kaydedilen pikselleri geri yükle.
+        let mut index = 0;
+
+        for row in 6..8 {
+            for col in 0..8 {
+                let color = self.cursor_saved[index];
+
+                self.put_pixel(x + col, y + row, color);
+
+                index += 1;
+            }
+        }
+
+        self.cursor_visible = false;
+    }
+
+    pub fn toggle_cursor(&mut self, visible: bool) {
+        if visible {
+            self.draw_cursor();
+        } else {
+            self.clear_cursor();
+        }
+    }
+
     pub fn print_char(&mut self, character: char, color: Color) {
+        self.clear_cursor();
         match character {
             '\n' => {
                 self.new_line();
@@ -146,6 +220,8 @@ impl<'a> Console<'a> {
     // ========================================================
 
     pub fn backspace(&mut self) {
+        self.clear_cursor();
+
         if self.x == 0 {
             return;
         }
@@ -154,7 +230,11 @@ impl<'a> Console<'a> {
 
         for row in 0..8 {
             for col in 0..8 {
-                self.put_pixel(self.x + col, self.y + row, self.bg);
+                self.put_pixel(
+                    self.x + col,
+                    self.y + row,
+                    self.bg,
+                );
             }
         }
     }
@@ -164,6 +244,8 @@ impl<'a> Console<'a> {
     // ========================================================
 
     fn new_line(&mut self) {
+        self.clear_cursor();
+
         self.x = 0;
 
         self.y += 10;
@@ -196,10 +278,36 @@ impl<'a> Console<'a> {
 
         self.x += 8;
     }
-
+    
     // ========================================================
     // PIXEL
     // ========================================================
+
+    fn get_pixel(&self, x: usize, y: usize) -> Color {
+        if x >= self.info.width || y >= self.info.height {
+            return self.bg;
+        }
+
+        let pixel_offset =
+            y * self.info.bytes_per_pixel * self.info.width
+                + x * self.info.bytes_per_pixel;
+
+        match self.info.pixel_format {
+            PixelFormat::Rgb => Color {
+                r: self.buffer[pixel_offset],
+                g: self.buffer[pixel_offset + 1],
+                b: self.buffer[pixel_offset + 2],
+            },
+
+            PixelFormat::Bgr => Color {
+                r: self.buffer[pixel_offset + 2],
+                g: self.buffer[pixel_offset + 1],
+                b: self.buffer[pixel_offset],
+            },
+
+            _ => self.bg,
+        }
+    }
 
     fn put_pixel(&mut self, x: usize, y: usize, color: Color) {
         if x >= self.info.width || y >= self.info.height {
@@ -235,6 +343,8 @@ impl<'a> Console<'a> {
     // ========================================================
 
     fn scroll(&mut self) {
+        self.clear_cursor();
+
         let width = self.info.width;
         let height = self.info.height;
 

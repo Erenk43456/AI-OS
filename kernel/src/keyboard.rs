@@ -1,54 +1,19 @@
 use crate::drivers::keyboard::ps2;
+use crate::input::event::InputEvent;
+use crate::input::queue;
 
-use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1, layouts};
+use pc_keyboard::{
+    DecodedKey,
+    HandleControl,
+    Keyboard,
+    KeyCode,
+    ScancodeSet1,
+    layouts,
+};
 
 use spin::Mutex;
 
-const INPUT_BUFFER_SIZE: usize = 256;
 const MAP_BUFFER_SIZE: usize = 64;
-
-// ============================================================
-// INPUT BUFFER
-// ============================================================
-
-struct InputBuffer {
-    data: [u8; INPUT_BUFFER_SIZE],
-    read: usize,
-    write: usize,
-}
-
-impl InputBuffer {
-    const fn new() -> Self {
-        Self {
-            data: [0; INPUT_BUFFER_SIZE],
-            read: 0,
-            write: 0,
-        }
-    }
-
-    fn push(&mut self, byte: u8) {
-        let next = (self.write + 1) % INPUT_BUFFER_SIZE;
-
-        if next == self.read {
-            return;
-        }
-
-        self.data[self.write] = byte;
-        self.write = next;
-    }
-
-    fn pop(&mut self) -> Option<u8> {
-        if self.read == self.write {
-            return None;
-        }
-
-        let byte = self.data[self.read];
-
-        self.read = (self.read + 1) % INPUT_BUFFER_SIZE;
-
-        Some(byte)
-    }
-}
 
 // ============================================================
 // SCANCODE DEBUG BUFFER
@@ -122,13 +87,14 @@ impl KeyboardState {
 // GLOBALS
 // ============================================================
 
-static KEYBOARD: Mutex<Option<Keyboard<layouts::Us104Key, ScancodeSet1>>> = Mutex::new(None);
+static KEYBOARD: Mutex<Option<Keyboard<layouts::Us104Key, ScancodeSet1>>> =
+    Mutex::new(None);
 
-static INPUT: Mutex<InputBuffer> = Mutex::new(InputBuffer::new());
+static MAP_OUTPUT: Mutex<MapBuffer> =
+    Mutex::new(MapBuffer::new());
 
-static MAP_OUTPUT: Mutex<MapBuffer> = Mutex::new(MapBuffer::new());
-
-static KEYBOARD_STATE: Mutex<KeyboardState> = Mutex::new(KeyboardState::new());
+static KEYBOARD_STATE: Mutex<KeyboardState> =
+    Mutex::new(KeyboardState::new());
 
 // ============================================================
 // INIT
@@ -189,80 +155,87 @@ fn push_map_scancode(scancode: u8) {
 // 0x33 = Ö / ö
 // 0x34 = Ç / ç
 //
-// Ayrıca:
-// 0x26 = I / ı
-//
 // uppercase:
 //     false = küçük
 //     true  = büyük
 //
 // ============================================================
 
-fn turkish_character(scancode: u8, uppercase: bool) -> Option<u8> {
+fn turkish_character(
+    scancode: u8,
+    uppercase: bool,
+) -> Option<u8> {
     match scancode {
+
         // ====================================================
         // Ğ / ğ
         // ====================================================
+
         0x1A => {
             if uppercase {
-                Some(0x86) // Ğ
+                Some(0x86)
             } else {
-                Some(0x80) // ğ
+                Some(0x80)
             }
         }
 
         // ====================================================
         // Ü / ü
         // ====================================================
+
         0x1B => {
             if uppercase {
-                Some(0x87) // Ü
+                Some(0x87)
             } else {
-                Some(0x81) // ü
+                Some(0x81)
             }
         }
 
         // ====================================================
         // Ş / ş
         // ====================================================
+
         0x27 => {
             if uppercase {
-                Some(0x88) // Ş
+                Some(0x88)
             } else {
-                Some(0x82) // ş
+                Some(0x82)
             }
         }
 
         // ====================================================
         // İ / i
         // ====================================================
+
         0x28 => {
             if uppercase {
-                Some(0x89) // İ
+                Some(0x89)
             } else {
-                Some(0x83) // i
+                Some(0x83)
             }
         }
 
         // ====================================================
         // Ö / ö
         // ====================================================
+
         0x33 => {
             if uppercase {
-                Some(0x8A) // Ö
+                Some(0x8A)
             } else {
-                Some(0x84) // ö
+                Some(0x84)
             }
         }
 
         // ====================================================
         // Ç / ç
         // ====================================================
+
         0x34 => {
             if uppercase {
-                Some(0x8B) // Ç
+                Some(0x8B)
             } else {
-                Some(0x85) // ç
+                Some(0x85)
             }
         }
 
@@ -275,6 +248,7 @@ fn turkish_character(scancode: u8, uppercase: bool) -> Option<u8> {
 // ============================================================
 
 fn process_scancode(scancode: u8) {
+
     // ========================================================
     // DEBUG
     // ========================================================
@@ -289,6 +263,7 @@ fn process_scancode(scancode: u8) {
         let mut state = KEYBOARD_STATE.lock();
 
         match scancode {
+
             // Left Shift press
             0x2A => {
                 state.left_shift = true;
@@ -338,6 +313,59 @@ fn process_scancode(scancode: u8) {
     }
 
     // ========================================================
+    // DIRECT ARROW MAPPING
+    // ========================================================
+    //
+    // Set 1:
+    //
+    // 0x48 = Up
+    // 0x50 = Down
+    // 0x4B = Left
+    // 0x4D = Right
+    //
+    // Şimdilik doğrudan event olarak ele alıyoruz.
+    //
+    // Böylece bunların:
+    //
+    //     8
+    //     2
+    //     4
+    //     6
+    //
+    // olarak sisteme düşmesini engelliyoruz.
+    //
+    // ========================================================
+
+    match scancode {
+
+        // Up
+        0x48 => {
+            queue::push(InputEvent::ArrowUp);
+            return;
+        }
+
+        // Down
+        0x50 => {
+            queue::push(InputEvent::ArrowDown);
+            return;
+        }
+
+        // Left
+        0x4B => {
+            queue::push(InputEvent::ArrowLeft);
+            return;
+        }
+
+        // Right
+        0x4D => {
+            queue::push(InputEvent::ArrowRight);
+            return;
+        }
+
+        _ => {}
+    }
+
+    // ========================================================
     // GET KEYBOARD STATE
     // ========================================================
 
@@ -353,15 +381,6 @@ fn process_scancode(scancode: u8) {
     // ========================================================
     // LETTER CASE
     // ========================================================
-    //
-    // Shift XOR CapsLock:
-    //
-    // normal       = lowercase
-    // shift        = uppercase
-    // caps         = uppercase
-    // shift + caps = lowercase
-    //
-    // ========================================================
 
     let uppercase = shift ^ caps_lock;
 
@@ -369,14 +388,18 @@ fn process_scancode(scancode: u8) {
     // TÜRKÇE KARAKTERLER
     // ========================================================
 
-    if let Some(character) = turkish_character(scancode, uppercase) {
-        INPUT.lock().push(character);
+    if let Some(character) =
+        turkish_character(scancode, uppercase)
+    {
+        queue::push(
+            InputEvent::KeyPress(character)
+        );
 
         return;
     }
 
     // ========================================================
-    // NORMAL ASCII KEYBOARD
+    // NORMAL KEYBOARD
     // ========================================================
 
     let mut keyboard_guard = KEYBOARD.lock();
@@ -385,38 +408,133 @@ fn process_scancode(scancode: u8) {
         return;
     };
 
-    let Ok(Some(event)) = keyboard.add_byte(scancode) else {
+    let Ok(Some(event)) =
+        keyboard.add_byte(scancode)
+    else {
         return;
     };
 
-    let Some(key) = keyboard.process_keyevent(event) else {
+    let Some(key) =
+        keyboard.process_keyevent(event)
+    else {
         return;
     };
+
+    // ========================================================
+    // DECODED KEY
+    // ========================================================
 
     match key {
+
+        // ====================================================
+        // UNICODE / ASCII
+        // ====================================================
+
         DecodedKey::Unicode(character) => {
+
             if character.is_ascii() {
-                let mut output = character as u8;
 
-                // =================================================
+                let mut output =
+                    character as u8;
+
+                // ============================================
                 // ASCII LETTER CASE
-                // =================================================
+                // ============================================
 
-                if output >= b'a' && output <= b'z' {
+                if output >= b'a'
+                    && output <= b'z'
+                {
                     if uppercase {
                         output -= 32;
                     }
-                } else if output >= b'A' && output <= b'Z' {
+                }
+                else if output >= b'A'
+                    && output <= b'Z'
+                {
                     if !uppercase {
                         output += 32;
                     }
                 }
 
-                INPUT.lock().push(output);
+                queue::push(
+                    InputEvent::KeyPress(output)
+                );
             }
         }
 
-        DecodedKey::RawKey(_) => {}
+        // ====================================================
+        // SPECIAL KEYS
+        // ====================================================
+
+        DecodedKey::RawKey(keycode) => {
+
+            match keycode {
+
+                // ============================================
+                // ARROWS
+                // ============================================
+
+                KeyCode::ArrowUp => {
+                    queue::push(
+                        InputEvent::ArrowUp
+                    );
+                }
+
+                KeyCode::ArrowDown => {
+                    queue::push(
+                        InputEvent::ArrowDown
+                    );
+                }
+
+                KeyCode::ArrowLeft => {
+                    queue::push(
+                        InputEvent::ArrowLeft
+                    );
+                }
+
+                KeyCode::ArrowRight => {
+                    queue::push(
+                        InputEvent::ArrowRight
+                    );
+                }
+
+                // ============================================
+                // BACKSPACE
+                // ============================================
+
+                KeyCode::Backspace => {
+                    queue::push(
+                        InputEvent::Backspace
+                    );
+                }
+
+                // ============================================
+                // ENTER
+                // ============================================
+
+                KeyCode::Return => {
+                    queue::push(
+                        InputEvent::Enter
+                    );
+                }
+
+                // ============================================
+                // TAB
+                // ============================================
+
+                KeyCode::Tab => {
+                    queue::push(
+                        InputEvent::Tab
+                    );
+                }
+
+                // ============================================
+                // OTHER
+                // ============================================
+
+                _ => {}
+            }
+        }
     }
 }
 
@@ -425,7 +543,9 @@ fn process_scancode(scancode: u8) {
 // ============================================================
 
 pub fn poll() {
-    while let Some(scancode) = ps2::read_scancode() {
+    while let Some(scancode) =
+        ps2::read_scancode()
+    {
         process_scancode(scancode);
     }
 }
@@ -433,9 +553,13 @@ pub fn poll() {
 // ============================================================
 // READ
 // ============================================================
+//
+// Yeni input sistemi queue üzerinden çalışıyor.
+// Bu fonksiyon şimdilik uyumluluk amacıyla tutuluyor.
+//
 
-pub fn read() -> Option<u8> {
-    INPUT.lock().pop()
+pub fn read() -> Option<InputEvent> {
+    queue::pop()
 }
 
 // ============================================================

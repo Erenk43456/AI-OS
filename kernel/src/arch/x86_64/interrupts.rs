@@ -109,6 +109,13 @@ pub fn end_of_interrupt(interrupt: InterruptIndex) {
     write_port(PIC1_COMMAND, PIC_EOI);
 }
 
+pub fn unmask_timer() {
+    let mask = read_port(PIC1_DATA);
+
+    // IRQ0 = PIT timer.
+    write_port(PIC1_DATA, mask & !(1 << 0));
+}
+
 pub fn unmask_keyboard() {
     let mask = read_port(PIC1_DATA);
 
