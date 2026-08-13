@@ -8,7 +8,6 @@ use pc_keyboard::{
     Keyboard,
     KeyCode,
     ScancodeSet1,
-    layouts,
 };
 
 use spin::Mutex;
@@ -105,7 +104,7 @@ pub fn init() {
 
     let keyboard = Keyboard::new(
         ScancodeSet1::new(),
-        layouts::Us104Key,
+        crate::keyboard_layout::TurkishQ,
         HandleControl::Ignore,
     );
 
@@ -166,6 +165,18 @@ fn turkish_character(
     uppercase: bool,
 ) -> Option<u8> {
     match scancode {
+
+        // ====================================================
+        // I / ı
+        // ====================================================
+
+        0x16 => {
+            if uppercase {
+                Some(0x8C)
+            } else {
+                Some(0x8D)
+            }
+        }
 
         // ====================================================
         // Ğ / ğ
