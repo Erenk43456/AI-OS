@@ -1,4 +1,7 @@
+pub mod event;
+pub mod keycode;
 pub mod layout;
+pub mod state;
 
 use crate::drivers::keyboard::ps2::{
     controller::Controller,
@@ -12,46 +15,60 @@ use crate::input::{
 
 use spin::Mutex;
 
+use event::{
+    KeyEvent,
+    KeyEventKind,
+};
+
+use keycode::KeyCode;
+
+use layout::Modifiers;
+
+use state::KeyboardState;
+
 // ============================================================
-// KEYBOARD STATE
+// DRIVER STATE
 // ============================================================
 
 static PS2_KEYBOARD: Mutex<Option<Ps2Keyboard>> =
     Mutex::new(None);
 
-static EXTENDED_SCANCODE: Mutex<bool> =
-    Mutex::new(false);
+static KEYBOARD_STATE: Mutex<KeyboardState> =
+    Mutex::new(KeyboardState::new());
 
-static SHIFT_PRESSED: Mutex<bool> =
-    Mutex::new(false);
-
-static CAPS_LOCK: Mutex<bool> =
+static EXTENDED_SEQUENCE: Mutex<bool> =
     Mutex::new(false);
 
 // ============================================================
-// INIT
+// INITIALIZATION
 // ============================================================
 
 pub fn init() {
-    let controller = Controller::new();
+    let controller =
+        Controller::new();
 
-    let keyboard = Ps2Keyboard::new(controller);
+    let keyboard =
+        Ps2Keyboard::new(controller);
 
     if keyboard.init().is_err() {
         return;
     }
 
-    *PS2_KEYBOARD.lock() = Some(keyboard);
+    *PS2_KEYBOARD.lock() =
+        Some(keyboard);
 }
 
 // ============================================================
-// INTERRUPT
+// INTERRUPT ENTRY
 // ============================================================
 
 pub fn handle_interrupt() {
-    let keyboard = PS2_KEYBOARD.lock();
+    let keyboard =
+        PS2_KEYBOARD.lock();
 
-    let Some(keyboard) = keyboard.as_ref() else {
+    let Some(keyboard) =
+        keyboard.as_ref()
+    else {
         return;
     };
 
@@ -61,18 +78,42 @@ pub fn handle_interrupt() {
         return;
     };
 
-    // ========================================================
-    // EXTENDED SCANCODE PREFIX
-    // ========================================================
+    process_scancode(scancode);
+}
+
+// ============================================================
+// SCANCODE PROCESSING
+// ============================================================
+
+fn process_scancode(
+    scancode: u8,
+) {
+    // --------------------------------------------------------
+    // E0 EXTENDED PREFIX
+    // --------------------------------------------------------
 
     if scancode == 0xE0 {
-        *EXTENDED_SCANCODE.lock() = true;
+        *EXTENDED_SEQUENCE.lock() =
+            true;
+
+        return;
+    }
+
+    // --------------------------------------------------------
+    // E1 PREFIX
+    //
+    // Pause/Break is a special multi-byte sequence.
+    // We currently consume it safely instead of allowing
+    // the individual bytes to become normal keys.
+    // --------------------------------------------------------
+
+    if scancode == 0xE1 {
         return;
     }
 
     let extended = {
         let mut state =
-            EXTENDED_SCANCODE.lock();
+            EXTENDED_SEQUENCE.lock();
 
         let value = *state;
 
@@ -81,327 +122,181 @@ pub fn handle_interrupt() {
         value
     };
 
-    // ========================================================
-    // SHIFT
-    // ========================================================
+    let pressed =
+        scancode & 0x80 == 0;
 
-    if !extended {
-        match scancode {
-            // Left Shift press
-            0x2A => {
-                *SHIFT_PRESSED.lock() = true;
-                return;
-            }
+    let Some(key) =
+        keycode::from_scancode(
+            scancode,
+            extended,
+        )
+    else {
+        return;
+    };
 
-            // Right Shift press
-            0x36 => {
-                *SHIFT_PRESSED.lock() = true;
-                return;
-            }
+    let event =
+        if pressed {
+            KeyEvent::press(key)
+        } else {
+            KeyEvent::release(key)
+        };
 
-            // Left Shift release
-            0xAA => {
-                *SHIFT_PRESSED.lock() = false;
-                return;
-            }
-
-            // Right Shift release
-            0xB6 => {
-                *SHIFT_PRESSED.lock() = false;
-                return;
-            }
-
-            _ => {}
-        }
-    }
-
-    // ========================================================
-    // CAPS LOCK
-    // ========================================================
-
-    if !extended {
-        match scancode {
-            // Caps Lock press
-            0x3A => {
-                let mut caps =
-                    CAPS_LOCK.lock();
-
-                *caps = !*caps;
-
-                return;
-            }
-
-            // Caps Lock release
-            0xBA => {
-                return;
-            }
-
-            _ => {}
-        }
-    }
-
-    // ========================================================
-    // DECODE
-    // ========================================================
-
-    if let Some(event) =
-        decode_scancode(scancode, extended)
-    {
-        queue::push(event);
-    }
+    process_key_event(event);
 }
 
 // ============================================================
-// SCANCODE DECODER
+// KEY EVENT PROCESSING
 // ============================================================
 
-fn decode_scancode(
-    scancode: u8,
-    extended: bool,
-) -> Option<InputEvent> {
-    let released =
-        scancode & 0x80 != 0;
+fn process_key_event(
+    event: KeyEvent,
+) {
+    let pressed =
+        matches!(
+            event.kind,
+            KeyEventKind::Press
+        );
 
-    let code =
-        scancode & 0x7F;
+    {
+        let mut state =
+            KEYBOARD_STATE.lock();
 
-    // ========================================================
-    // EXTENDED KEYS
-    // ========================================================
+        state.update(
+            event.key,
+            pressed,
+        );
+    }
 
-    if extended {
-        if released {
-            return None;
-        }
+    // Modifier and lock keys do not generate
+    // character events themselves.
+    if is_modifier_or_lock(event.key) {
+        return;
+    }
 
-        return match code {
-            // Arrow Up
-            0x48 =>
-                Some(InputEvent::ArrowUp),
+    if !pressed {
+        return;
+    }
 
-            // Arrow Down
-            0x50 =>
-                Some(InputEvent::ArrowDown),
+    let state =
+        *KEYBOARD_STATE.lock();
 
-            // Arrow Left
-            0x4B =>
-                Some(InputEvent::ArrowLeft),
-
-            // Arrow Right
-            0x4D =>
-                Some(InputEvent::ArrowRight),
-
-            _ => None,
+    let modifiers =
+        Modifiers {
+            shift: state.shift(),
+            ctrl: state.ctrl(),
+            alt: state.alt(),
+            alt_gr: state.alt_gr(),
         };
+
+    // --------------------------------------------------------
+    // CHARACTER
+    // --------------------------------------------------------
+
+    if let Some(character) =
+        layout::translate_keycode(
+            event.key,
+            modifiers,
+        )
+    {
+        let character =
+            layout::apply_caps_lock(
+                character,
+                state.caps_lock(),
+                modifiers.shift,
+            );
+            
+        queue::push(
+            InputEvent::KeyPress(
+                character,
+            ),
+        );
+
+        return;
     }
 
-    // ========================================================
-    // KEY RELEASE
-    // ========================================================
+    // --------------------------------------------------------
+    // NON-CHARACTER INPUT
+    // --------------------------------------------------------
 
-    if released {
-        return None;
-    }
-
-    // ========================================================
-    // SPECIAL KEYS
-    // ========================================================
-
-    match code {
-        // Backspace
-        0x0E => {
-            return Some(
-                InputEvent::Backspace
+    match event.key {
+        KeyCode::Backspace => {
+            queue::push(
+                InputEvent::Backspace,
             );
         }
 
-        // Enter
-        0x1C => {
-            return Some(
-                InputEvent::Enter
+        KeyCode::Enter => {
+            queue::push(
+                InputEvent::Enter,
             );
         }
 
-        // Tab
-        0x0F => {
-            return Some(
-                InputEvent::Tab
+        KeyCode::Tab => {
+            queue::push(
+                InputEvent::Tab,
+            );
+        }
+
+        KeyCode::ArrowUp => {
+            queue::push(
+                InputEvent::ArrowUp,
+            );
+        }
+
+        KeyCode::ArrowDown => {
+            queue::push(
+                InputEvent::ArrowDown,
+            );
+        }
+
+        KeyCode::ArrowLeft => {
+            queue::push(
+                InputEvent::ArrowLeft,
+            );
+        }
+
+        KeyCode::ArrowRight => {
+            queue::push(
+                InputEvent::ArrowRight,
             );
         }
 
         _ => {}
     }
+}
 
-    // ========================================================
-    // KEYBOARD STATE
-    // ========================================================
+// ============================================================
+// MODIFIER / LOCK CLASSIFICATION
+// ============================================================
 
-    let shift =
-        *SHIFT_PRESSED.lock();
+fn is_modifier_or_lock(
+    key: KeyCode,
+) -> bool {
+    matches!(
+        key,
 
-    let caps_lock =
-        *CAPS_LOCK.lock();
+        KeyCode::LeftShift
+        | KeyCode::RightShift
 
-    // ========================================================
-    // CHARACTER
-    // ========================================================
+        | KeyCode::LeftCtrl
+        | KeyCode::RightCtrl
 
-    let character =
-        layout::translate_with_shift(
-            code,
-            shift,
-        )?;
+        | KeyCode::LeftAlt
+        | KeyCode::RightAlt
 
-    // ========================================================
-    // CAPS LOCK
-    // ========================================================
+        | KeyCode::LeftSuper
+        | KeyCode::RightSuper
 
-    let character =
-        apply_caps_lock(
-            character,
-            caps_lock,
-            shift,
-        );
-
-    Some(
-        InputEvent::KeyPress(character)
+        | KeyCode::CapsLock
+        | KeyCode::NumLock
+        | KeyCode::ScrollLock
     )
 }
 
 // ============================================================
-// CAPS LOCK CHARACTER TRANSFORMATION
-// ============================================================
-//
-// Turkish keyboard rules:
-//
-// Normal:
-//     i -> i
-//     ı -> ı
-//
-// Shift:
-//     i -> İ
-//     ı -> I
-//
-// Caps Lock:
-//     i -> İ
-//     ı -> I
-//
-// Caps Lock + Shift:
-//     i -> i
-//     ı -> ı
-//
-// The same inverse behavior applies to the other
-// Turkish characters.
-//
-// Symbols and numbers are NOT affected by Caps Lock.
+// PUBLIC STATE ACCESS
 // ============================================================
 
-fn apply_caps_lock(
-    character: char,
-    caps_lock: bool,
-    shift: bool,
-) -> char {
-    if !caps_lock {
-        return character;
-    }
-
-    match (character, shift) {
-        // ====================================================
-        // TURKISH CHARACTERS
-        // ====================================================
-
-        // i <-> İ
-        ('i', false) => 'İ',
-        ('İ', true) => 'i',
-
-        // ı <-> I
-        ('ı', false) => 'I',
-        ('I', true) => 'ı',
-
-        // ğ <-> Ğ
-        ('ğ', false) => 'Ğ',
-        ('Ğ', true) => 'ğ',
-
-        // ü <-> Ü
-        ('ü', false) => 'Ü',
-        ('Ü', true) => 'ü',
-
-        // ş <-> Ş
-        ('ş', false) => 'Ş',
-        ('Ş', true) => 'ş',
-
-        // ö <-> Ö
-        ('ö', false) => 'Ö',
-        ('Ö', true) => 'ö',
-
-        // ç <-> Ç
-        ('ç', false) => 'Ç',
-        ('Ç', true) => 'ç',
-
-        // ====================================================
-        // ENGLISH CHARACTERS
-        // ====================================================
-
-        // Lowercase -> Uppercase
-        ('a', false) => 'A',
-        ('b', false) => 'B',
-        ('c', false) => 'C',
-        ('d', false) => 'D',
-        ('e', false) => 'E',
-        ('f', false) => 'F',
-        ('g', false) => 'G',
-        ('h', false) => 'H',
-        ('j', false) => 'J',
-        ('k', false) => 'K',
-        ('l', false) => 'L',
-        ('m', false) => 'M',
-        ('n', false) => 'N',
-        ('o', false) => 'O',
-        ('p', false) => 'P',
-        ('q', false) => 'Q',
-        ('r', false) => 'R',
-        ('s', false) => 'S',
-        ('t', false) => 'T',
-        ('u', false) => 'U',
-        ('v', false) => 'V',
-        ('w', false) => 'W',
-        ('x', false) => 'X',
-        ('y', false) => 'Y',
-        ('z', false) => 'Z',
-
-        // Uppercase -> Lowercase when Shift is held
-        ('A', true) => 'a',
-        ('B', true) => 'b',
-        ('C', true) => 'c',
-        ('D', true) => 'd',
-        ('E', true) => 'e',
-        ('F', true) => 'f',
-        ('G', true) => 'g',
-        ('H', true) => 'h',
-        ('J', true) => 'j',
-        ('K', true) => 'k',
-        ('L', true) => 'l',
-        ('M', true) => 'm',
-        ('N', true) => 'n',
-        ('O', true) => 'o',
-        ('P', true) => 'p',
-        ('Q', true) => 'q',
-        ('R', true) => 'r',
-        ('S', true) => 's',
-        ('T', true) => 't',
-        ('U', true) => 'u',
-        ('V', true) => 'v',
-        ('W', true) => 'w',
-        ('X', true) => 'x',
-        ('Y', true) => 'y',
-        ('Z', true) => 'z',
-
-        // ====================================================
-        // EVERYTHING ELSE
-        // ====================================================
-        //
-        // Numbers and symbols remain unchanged.
-        //
-        _ => character,
-    }
+pub fn state() -> KeyboardState {
+    *KEYBOARD_STATE.lock()
 }
