@@ -10,7 +10,8 @@ fn main() {
     println!();
 
     let uefi_path = PathBuf::from(
-        env::var("UEFI_PATH").expect("UEFI_PATH bulunamadı. Önce cargo build çalıştırın."),
+        env::var("UEFI_PATH")
+            .expect("UEFI_PATH bulunamadı. Önce cargo build çalıştırın."),
     );
 
     println!("[OK] UEFI image bulundu:");
@@ -21,19 +22,24 @@ fn main() {
     let firmware = r"C:\Program Files\qemu\share\edk2-x86_64-code.fd";
 
     println!("[OK] QEMU başlatılıyor...");
+    println!("[OK] Resolution: 1366x768");
     println!();
 
     let status = Command::new(qemu)
         .args([
             "-drive",
-            &format!("if=pflash,format=raw,readonly=on,file={}", firmware),
+            &format!(
+                "if=pflash,format=raw,readonly=on,file={}",
+                firmware
+            ),
             "-drive",
-            &format!("format=raw,file={}", uefi_path.display()),
+            &format!(
+                "format=raw,file={}",
+                uefi_path.display()
+            ),
+            "-m",
+            "512M",
         ])
         .status()
         .expect("QEMU başlatılamadı.");
-
-    if !status.success() {
-        eprintln!("QEMU hata koduyla kapandı: {:?}", status.code());
-    }
 }

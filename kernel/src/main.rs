@@ -7,11 +7,16 @@ mod console;
 mod drivers;
 mod input;
 mod keyboard;
-mod keyboard_layout;
 
-use bootloader_api::{entry_point, BootInfo};
+use bootloader_api::{
+    entry_point,
+    BootInfo,
+};
 
-use console::{Color, Console};
+use console::{
+    Color,
+    Console,
+};
 
 use core::panic::PanicInfo;
 
@@ -24,7 +29,9 @@ entry_point!(kernel_main);
 // KERNEL
 // ============================================================
 
-fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
+fn kernel_main(
+    boot_info: &'static mut BootInfo,
+) -> ! {
     // ========================================================
     // INTERRUPTS
     // ========================================================
@@ -35,13 +42,10 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     // CPU / INTERRUPT INITIALIZATION
     // ========================================================
 
-    // GDT
     arch::x86_64::gdt::init();
 
-    // IDT
     arch::x86_64::idt::init();
 
-    // PIC
     arch::x86_64::interrupts::init();
 
     // ========================================================
@@ -60,22 +64,24 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     // IRQ UNMASK
     // ========================================================
 
-    // PIT IRQ0
     arch::x86_64::interrupts::unmask_timer();
 
-    // PS/2 Keyboard IRQ1
     arch::x86_64::interrupts::unmask_keyboard();
 
     // ========================================================
     // FRAMEBUFFER
     // ========================================================
 
-    if let Some(framebuffer) = boot_info.framebuffer.as_mut() {
+    if let Some(framebuffer) =
+        boot_info.framebuffer.as_mut()
+    {
         let info = framebuffer.info();
 
-        let buffer = framebuffer.buffer_mut();
+        let buffer =
+            framebuffer.buffer_mut();
 
-        let mut console = Console::new(buffer, info);
+        let mut console =
+            Console::new(buffer, info);
 
         console.clear();
 
@@ -83,15 +89,25 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
         // AI-OS BOOT SPLASH
         // ====================================================
 
-        console.println("", Color::WHITE);
-        console.println("", Color::WHITE);
+        console.println(
+            "",
+            Color::WHITE,
+        );
+
+        console.println(
+            "",
+            Color::WHITE,
+        );
 
         console.println(
             "                 AI-OS",
             Color::BLUE,
         );
 
-        console.println("", Color::WHITE);
+        console.println(
+            "",
+            Color::WHITE,
+        );
 
         console.println(
             "        ARTIFICIAL INTELLIGENCE",
@@ -103,15 +119,25 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
             Color::WHITE,
         );
 
-        console.println("", Color::WHITE);
-        console.println("", Color::WHITE);
+        console.println(
+            "",
+            Color::WHITE,
+        );
+
+        console.println(
+            "",
+            Color::WHITE,
+        );
 
         console.println(
             "              INITIALIZING",
             Color::BLUE,
         );
 
-        console.println("", Color::WHITE);
+        console.println(
+            "",
+            Color::WHITE,
+        );
 
         console.println(
             "                    .",
@@ -128,8 +154,15 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
             Color::WHITE,
         );
 
-        console.println("", Color::WHITE);
-        console.println("", Color::WHITE);
+        console.println(
+            "",
+            Color::WHITE,
+        );
+
+        console.println(
+            "",
+            Color::WHITE,
+        );
 
         // ====================================================
         // SYSTEM INITIALIZATION
@@ -190,66 +223,84 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
             Color::WHITE,
         );
 
-        console.println("", Color::WHITE);
+        console.println(
+            "",
+            Color::WHITE,
+        );
 
         console.println(
             "AI-OS SYSTEM READY",
             Color::BLUE,
         );
 
-        console.println("", Color::WHITE);
-        console.println("", Color::WHITE);
+        console.println(
+            "Framebuffer:",
+            Color::WHITE,
+        );
+
+        console.println(
+            "Resolution will be shown below",
+            Color::WHITE,
+        );
+
+        console.println(
+            "",
+            Color::WHITE,
+        );
+
+        console.println(
+            "",
+            Color::WHITE,
+        );
 
         // ====================================================
         // SYSTEM INFORMATION
         // ====================================================
 
         console.println(
-            "┌────────────────AI-OS────────────────────┐",
+            "AI-OS",
             Color::BLUE,
         );
 
         console.println(
-            "│                                            │",
+            "----------------------------------------",
             Color::BLUE,
         );
 
         console.println(
-            "│  Kernel      : AI-OS Kernel                │",
+            "Kernel       : AI-OS Kernel",
             Color::WHITE,
         );
 
         console.println(
-            "│  Architecture: x86_64                      │",
+            "Architecture : x86_64",
             Color::WHITE,
         );
 
         console.println(
-            "│  Input       : Turkish Q                   │",
+            "Input        : Turkish Q",
             Color::WHITE,
         );
 
         console.println(
-            "│  Events      : InputEvent                  │",
+            "Events       : InputEvent",
             Color::WHITE,
         );
 
         console.println(
-            "│  Queue       : 128 events                  │",
+            "Queue        : 128 events",
             Color::WHITE,
         );
 
         console.println(
-            "│                                            │",
+            "----------------------------------------",
             Color::BLUE,
         );
 
         console.println(
-            "└────────────────────────────────────────────┘",
-            Color::BLUE,
+            "",
+            Color::WHITE,
         );
-
-        console.println("", Color::WHITE);
 
         // ====================================================
         // SHELL PROMPT
@@ -260,25 +311,31 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
             Color::WHITE,
         );
 
+        // ====================================================
+        // ENABLE INTERRUPTS
+        // ====================================================
+
         arch::x86_64::interrupts::enable();
 
         // ====================================================
         // SHELL INPUT PROTECTION
         // ====================================================
 
-        // Kullanıcının yazabileceği alanın başlangıç noktası.
-        //
-        // Prompt'un kendisi hiçbir zaman silinemez.
+        let mut shell_input_x =
+            console.cursor_x();
 
-        let mut shell_input_x = console.cursor_x();
-        let mut shell_input_y = console.cursor_y();
+        let mut shell_input_y =
+            console.cursor_y();
 
         // ====================================================
         // CURSOR
         // ====================================================
 
-        let mut cursor_visible = true;
-        let mut last_cursor_tick = arch::x86_64::timer::ticks();
+        let mut cursor_visible =
+            true;
+
+        let mut last_cursor_tick =
+            arch::x86_64::timer::ticks();
 
         console.toggle_cursor(true);
 
@@ -287,249 +344,53 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
         // ====================================================
 
         loop {
-            
             // ==================================================
             // CURSOR BLINK
             // ==================================================
 
-            let current_tick = arch::x86_64::timer::ticks();
+            let current_tick =
+                arch::x86_64::timer::ticks();
 
-            if current_tick.wrapping_sub(last_cursor_tick) >= 50 {
-                last_cursor_tick = current_tick;
+            if current_tick
+                .wrapping_sub(last_cursor_tick)
+                >= 50
+            {
+                last_cursor_tick =
+                    current_tick;
 
-                cursor_visible = !cursor_visible;
+                cursor_visible =
+                    !cursor_visible;
 
-                console.toggle_cursor(cursor_visible);
+                console.toggle_cursor(
+                    cursor_visible,
+                );
             }
 
             // ==================================================
             // PROCESS INPUT EVENTS
             // ==================================================
 
-            while let Some(event) = queue::pop() {
+            while let Some(event) =
+                queue::pop()
+            {
                 console.toggle_cursor(false);
 
                 match event {
                     // ==========================================
-                    // KEY PRESS
+                    // CHARACTER
                     // ==========================================
 
-                    InputEvent::KeyPress(character) => {
-                        match character {
-                            // ==================================
-                            // ENTER
-                            // ==================================
-
-                            b'\n' | b'\r' => {
-                                console.println(
-                                    "",
-                                    Color::WHITE,
-                                );
-
-                                console.print(
-                                    "ai-os@system:~$ ",
-                                    Color::WHITE,
-                                );
-
-                                shell_input_x =
-                                    console.cursor_x();
-
-                                shell_input_y =
-                                    console.cursor_y();
-                            }
-
-                            // ==================================
-                            // BACKSPACE
-                            // ==================================
-
-                            0x08 => {
-                                let cursor_x =
-                                    console.cursor_x();
-
-                                let cursor_y =
-                                    console.cursor_y();
-
-                                if cursor_y == shell_input_y
-                                    && cursor_x > shell_input_x
-                                {
-                                    console.backspace();
-                                }
-                            }
-
-                            // ==================================
-                            // TAB
-                            // ==================================
-
-                            b'\t' => {
-                                console.print(
-                                    "    ",
-                                    Color::WHITE,
-                                );
-                            }
-
-                            // ==================================
-                            // TÜRKÇE KÜÇÜK
-                            // ==================================
-
-                            0x80 => {
-                                console.print_char(
-                                    'ğ',
-                                    Color::WHITE,
-                                );
-                            }
-
-                            0x81 => {
-                                console.print_char(
-                                    'ü',
-                                    Color::WHITE,
-                                );
-                            }
-
-                            0x82 => {
-                                console.print_char(
-                                    'ş',
-                                    Color::WHITE,
-                                );
-                            }
-
-                            0x83 => {
-                                console.print_char(
-                                    'i',
-                                    Color::WHITE,
-                                );
-                            }
-
-                            0x84 => {
-                                console.print_char(
-                                    'ö',
-                                    Color::WHITE,
-                                );
-                            }
-
-                            0x85 => {
-                                console.print_char(
-                                    'ç',
-                                    Color::WHITE,
-                                );
-                            }
-
-                            // ==================================
-                            // TÜRKÇE BÜYÜK
-                            // ==================================
-
-                            0x86 => {
-                                console.print_char(
-                                    'Ğ',
-                                    Color::WHITE,
-                                );
-                            }
-
-                            0x87 => {
-                                console.print_char(
-                                    'Ü',
-                                    Color::WHITE,
-                                );
-                            }
-
-                            0x88 => {
-                                console.print_char(
-                                    'Ş',
-                                    Color::WHITE,
-                                );
-                            }
-
-                            0x89 => {
-                                console.print_char(
-                                    'İ',
-                                    Color::WHITE,
-                                );
-                            }
-
-                            0x8A => {
-                                console.print_char(
-                                    'Ö',
-                                    Color::WHITE,
-                                );
-                            }
-
-                            0x8B => {
-                                console.print_char(
-                                    'Ç',
-                                    Color::WHITE,
-                                );
-                            }
-
-                            // ==================================
-                            // NOKTASIZ I
-                            // ==================================
-
-                            0x8C => {
-                                console.print_char(
-                                    'ı',
-                                    Color::WHITE,
-                                );
-                            }
-
-                            0x8D => {
-                                console.print_char(
-                                    'I',
-                                    Color::WHITE,
-                                );
-                            }
-
-                            // ==================================
-                            // NORMAL ASCII
-                            // ==================================
-
-                            character if character.is_ascii() => {
-                                console.print_char(
-                                    character as char,
-                                    Color::WHITE,
-                                );
-                            }
-
-                            // ==================================
-                            // UNKNOWN
-                            // ==================================
-
-                            _ => {}
-                        }
+                    InputEvent::KeyPress(
+                        character,
+                    ) => {
+                        console.print_char(
+                            character,
+                            Color::WHITE,
+                        );
                     }
 
                     // ==========================================
-                    // ARROW UP
-                    // ==========================================
-
-                    InputEvent::ArrowUp => {
-                        // Şimdilik history sistemi yok.
-                    }
-
-                    // ==========================================
-                    // ARROW DOWN
-                    // ==========================================
-
-                    InputEvent::ArrowDown => {
-                        // Şimdilik history sistemi yok.
-                    }
-
-                    // ==========================================
-                    // ARROW LEFT
-                    // ==========================================
-
-                    InputEvent::ArrowLeft => {
-                        // Şimdilik cursor navigation yok.
-                    }
-
-                    // ==========================================
-                    // ARROW RIGHT
-                    // ==========================================
-
-                    InputEvent::ArrowRight => {
-                        // Şimdilik cursor navigation yok.
-                    }
-
-                    // ==========================================
-                    // BACKSPACE EVENT
+                    // BACKSPACE
                     // ==========================================
 
                     InputEvent::Backspace => {
@@ -539,15 +400,17 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
                         let cursor_y =
                             console.cursor_y();
 
-                        if cursor_y == shell_input_y
-                            && cursor_x > shell_input_x
+                        if cursor_y
+                            == shell_input_y
+                            && cursor_x
+                                > shell_input_x
                         {
                             console.backspace();
                         }
                     }
 
                     // ==========================================
-                    // ENTER EVENT
+                    // ENTER
                     // ==========================================
 
                     InputEvent::Enter => {
@@ -569,7 +432,7 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
                     }
 
                     // ==========================================
-                    // TAB EVENT
+                    // TAB
                     // ==========================================
 
                     InputEvent::Tab => {
@@ -578,10 +441,52 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
                             Color::WHITE,
                         );
                     }
+
+                    // ==========================================
+                    // ARROW UP
+                    // ==========================================
+
+                    InputEvent::ArrowUp => {
+                        // Shell history
+                        // daha sonra eklenecek.
+                    }
+
+                    // ==========================================
+                    // ARROW DOWN
+                    // ==========================================
+
+                    InputEvent::ArrowDown => {
+                        // Shell history
+                        // daha sonra eklenecek.
+                    }
+
+                    // ==========================================
+                    // ARROW LEFT
+                    // ==========================================
+
+                    InputEvent::ArrowLeft => {
+                        // Cursor navigation
+                        // daha sonra eklenecek.
+                    }
+
+                    // ==========================================
+                    // ARROW RIGHT
+                    // ==========================================
+
+                    InputEvent::ArrowRight => {
+                        // Cursor navigation
+                        // daha sonra eklenecek.
+                    }
                 }
-                console.toggle_cursor(true);
-                
+
+                // ==============================================
+                // RESTORE CURSOR
+                // ==============================================
+
                 cursor_visible = true;
+
+                console.toggle_cursor(true);
+
                 last_cursor_tick =
                     arch::x86_64::timer::ticks();
             }
@@ -608,7 +513,9 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
 // ============================================================
 
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
+fn panic(
+    _info: &PanicInfo,
+) -> ! {
     loop {
         core::hint::spin_loop();
     }
